@@ -1,14 +1,19 @@
 
 name: 更新交割日历
 
-# 每周一 00:00 UTC（北京时间周一 08:00）重新生成一次；
-# push 也会触发，所以改了 OVERRIDES 提交后立刻就能发布；
+# 每周日 00:00 UTC（北京时间周日 08:00）重新生成一次；
+# push 也会触发，所以改了数据表提交后立刻就能发布；
 # 也可以在 Actions 页面手动点 Run workflow 立即跑一次。
+# 两会窗口期加跑：每年 2 月 20–29 日、3 月 1–4 日每天 00:00 UTC 各跑一次，
+# 因为政协正式决定可能压到会前几天才出（2025 年为 3 月 1 日决定、3 月 4 日开幕），
+# 每周跑一次可能错过会期；人大一般前一年 12 月底就已决定，每周跑一次足够。
 on:
   push:
     branches: [main]
   schedule:
     - cron: "0 0 * * 0"
+    - cron: "0 0 20-29 2 *"
+    - cron: "0 0 1-4 3 *"
   workflow_dispatch:
 
 permissions:
@@ -22,6 +27,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: 抓取两会正式决定日期（仅窗口期有效，窗口外自动跳过）
+        run: python scripts/fetch_lianghui.py || true
       - name: 生成 calendar.ics
         run: python generate_calendar.py
       - name: 提交更新
@@ -29,5 +36,6 @@ jobs:
           git config user.name "calendar-bot"
           git config user.email "calendar-bot@users.noreply.github.com"
           git add calendar.ics
+          git add lianghui_actual.json 2>/dev/null || true
           git diff --cached --quiet || git commit -m "更新交割日历"
           git push
