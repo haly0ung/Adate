@@ -1,1 +1,33 @@
 
+name: 更新交割日历
+
+# 每周一 00:00 UTC（北京时间周一 08:00）重新生成一次；
+# push 也会触发，所以改了 OVERRIDES 提交后立刻就能发布；
+# 也可以在 Actions 页面手动点 Run workflow 立即跑一次。
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 0 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 生成 calendar.ics
+        run: python generate_calendar.py
+      - name: 提交更新
+        run: |
+          git config user.name "calendar-bot"
+          git config user.email "calendar-bot@users.noreply.github.com"
+          git add calendar.ics
+          git diff --cached --quiet || git commit -m "更新交割日历"
+          git push
