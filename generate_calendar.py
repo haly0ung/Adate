@@ -17,7 +17,12 @@
   5. 指数调整：MSCI 季末最后一个交易日生效；富时罗素季月第三个周五后的周一生效（以指数公司公告为准）。
   6. 美联储议息：决议公布日（北京时间），即美国议息会议次日凌晨公布后的第一个 A 股交易日上午。
   7. 衍生品到期：ETF 期权每月第四个星期三；国债期货季月第二个星期五。
-  8. 全国两会：2026 年政协 3 月 4 日、人大 3 月 5 日；2027 年起日期公布后更新。
+  8. 全国两会：2026 年政协 3 月 4 日、人大 3 月 5 日（实数）；2027 年起先按
+     政协 3 月 4 日、人大 3 月 5 日标（预估），每年 12 月至次年 3 月 4 日的窗口期
+     由 scripts/fetch_lianghui.py 抓取官方正式决定替换为实数（见 lianghui_actual.json）。
+     注意人大和政协公布节奏不同：人大一般前一年 12 月底常委会决定（2026 年为
+     2025 年 12 月 27 日，提前约 68 天）；政协可能压哨（2025 年为 3 月 1 日决定、
+     3 月 4 日开幕，只提前 3 天），故窗口期后期需每天抓取。
   9. A 股休市：2026 年国务院放假安排对应的休市 block；2027 年放假安排公布后更新。
   10. 富时 A50 交割日：新交所富时中国 A50 指数期货，每月倒数第二个新加坡工作日
       （按周一至周五推算；若新交所月末遇新加坡假期则可能顺延一天，以新交所公告为准）。
@@ -38,6 +43,7 @@
 """
 
 import calendar as calmod
+import json
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -84,6 +90,17 @@ MSCI = ["2026-02-27", "2026-05-29", "2026-08-31", "2026-11-30"]
 # 2026 年：政协十四届四次会议 3 月 4 日开幕，人大十四届四次会议 3 月 5 日开幕（政府工作报告）。
 LIANGHUI = [("2026-03-04", "全国政协十四届四次会议开幕"),
             ("2026-03-05", "全国人大十四届四次会议开幕（政府工作报告）")]
+# 2027 年起的实数由窗口抓取脚本写入 lianghui_actual.json，格式：
+# {"2027": {"cppcc": "2027-03-04", "npc": "2027-03-05"}}；没有实数的年份用 3 月 4/5 日预估。
+LIANGHUI_ACTUAL_PATH = Path(__file__).resolve().parent / "lianghui_actual.json"
+
+
+def load_lianghui_actual():
+    try:
+        data = json.loads(LIANGHUI_ACTUAL_PATH.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
 
 # ---------------- A 股休市 block（2026 年国务院放假安排） ----------------
 # (开始, 结束次日, 名称)。市场周六周日恒休市，这里列的是法定假期 block。
@@ -348,6 +365,24 @@ def main():
     for s, title in LIANGHUI:
         add(f"lianghui-{s.replace('-', '')}", title,
             "全国两会期间关注政府工作报告及政策信号对市场的影响。", d(s))
+    actual = load_lianghui_actual()
+    years_real = {int(s[:4]) for s, _ in LIANGHUI} | {int(y) for y in actual}
+    for y in sorted({yy for yy, _ in months}):
+        if y in years_real:
+            for key, title in (("cppcc", "全国政协会议开幕"), ("npc", "全国人大会议开幕（政府工作报告）")):
+                s = actual.get(str(y), {}).get(key)
+                if s:
+                    add(f"lianghui-{s.replace('-', '')}", title,
+                        "全国两会期间关注政府工作报告及政策信号对市场的影响（官方正式决定日期）。", d(s))
+            continue
+        if y < 2027:
+            continue
+        # 没有实数的年份：按近年惯例（政协 3 月 4 日、人大 3 月 5 日）标预估占位，
+        # 窗口抓取到官方正式决定后由 lianghui_actual.json 替换。
+        add(f"lianghui-est-{y}-cppcc", "全国政协会议开幕（预估）",
+            "按近年惯例（政协 3 月 4 日）推算，官方正式决定公布后以抓取结果为准。", date(y, 3, 4))
+        add(f"lianghui-est-{y}-npc", "全国人大会议开幕（预估）",
+            "按近年惯例（人大 3 月 5 日）推算，官方正式决定公布后以抓取结果为准。", date(y, 3, 5))
 
     # ---- 10. 富时 A50 交割日（新交所） ----
     for y, m in months:
